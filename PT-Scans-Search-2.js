@@ -137,8 +137,8 @@ function init() {
       status.set("A carregar biblioteca AniList...");
       loading.set(true);
       try {
+        // ctx.manga.getCollection() usa a sessão autenticada do Seanime internamente
         const collection = await ctx.manga.getCollection();
-        // collection.mediaListCollection.lists = array de listas (CURRENT, etc.)
         const lists = (collection &&
                        collection.mediaListCollection &&
                        Array.isArray(collection.mediaListCollection.lists))
@@ -147,7 +147,7 @@ function init() {
         const entries = [];
         lists.forEach(function(list) {
           var listName = list.name || "";
-          safeArray(list.entries).forEach(function(e) {
+          (Array.isArray(list.entries) ? list.entries : []).forEach(function(e) {
             var media = e.media || {};
             var titles = media.title || {};
             var cover = media.coverImage || {};
@@ -162,7 +162,9 @@ function init() {
           });
         });
         libraryData.set(entries);
-        status.set(entries.length ? "Biblioteca carregada — " + entries.length + " mangas" : "Biblioteca vazia");
+        status.set(entries.length
+          ? "Biblioteca carregada — " + entries.length + " mangas"
+          : "Biblioteca vazia");
       } catch (e) {
         libraryData.set([]);
         status.set("Erro: " + (e && e.message ? e.message : String(e)));
@@ -524,7 +526,7 @@ function init() {
 
     /* ── LIBRARY ── */
     function renderLibrary(){
-      // auto-carregar ao entrar na biblioteca
+      // auto-carregar ao entrar na biblioteca (uma vez por sessão)
       if(!state.loading && state.libraryData.length===0 && !state._libLoaded){
         state._libLoaded=true;
         window.webview.send("fetchAniList", null);
