@@ -138,99 +138,49 @@ function init() {
       loading.set(true);
       var entries = [];
       try {
-        // Tentativa 1: ctx.manga nativa
-        try {
-          var col = await ctx.manga.getCollection();
-          var lists = (col && col.mediaListCollection && Array.isArray(col.mediaListCollection.lists))
-            ? col.mediaListCollection.lists
-            : (Array.isArray(col) ? col : []);
-          lists.forEach(function(list) {
-            (Array.isArray(list.entries) ? list.entries : []).forEach(function(e) {
+        var res = await fetch("http://127.0.0.1:43211/api/v1/manga/collection");
+        if (res.ok) {
+          var data = await res.json();
+          // Seanime /api/v1/manga/collection devolve:
+          // { lists: [ { type:"current"|"completed"|..., entries: [ { media:{id,title,coverImage,chapters}, listData:{progress}, ...} ] } ] }
+          // OU pode ser { mediaListCollection: { lists: [...] } }
+          var rawLists =
+            (data && Array.isArray(data.lists)) ? data.lists
+            : (data && data.mediaListCollection && Array.isArray(data.mediaListCollection.lists)) ? data.mediaListCollection.lists
+            : (Array.isArray(data)) ? data
+            : [];
+
+          rawLists.forEach(function(list) {
+            var listEntries = Array.isArray(list.entries) ? list.entries : [];
+            var listName = list.type || list.name || list.status || "";
+            listEntries.forEach(function(e) {
+              // Dois formatos possíveis:
+              // Formato A (Seanime nativo): e.media + e.listData
+              // Formato B (AniList raw):    e.media + e.progress direto
               var media = e.media || {};
-              var titles = media.title || {};
+              var titleObj = media.title || {};
               var cover = media.coverImage || {};
+              var progress = (e.listData && e.listData.progress != null)
+                ? e.listData.progress
+                : (e.progress != null ? e.progress : 0);
               entries.push({
                 id: media.id || 0,
-                title: titles.userPreferred || titles.english || titles.romaji || "Sem título",
+                title: titleObj.userPreferred || titleObj.english || titleObj.romaji || "Sem título",
                 image: cover.large || cover.medium || "",
                 chapters: media.chapters || null,
-                progress: e.progress || 0,
-                listStatus: list.name || list.status || ""
+                progress: progress,
+                listStatus: listName
               });
             });
           });
-        } catch(e1) {
-          console.log("ctx.manga.getCollection falhou:", e1 && e1.message ? e1.message : String(e1));
         }
-        // Tentativa 2: REST API local
-        if (entries.length === 0) {
-          try {
-            var base = (typeof window !== "undefined" && window.location && window.location.origin)
-              ? window.location.origin : "http://127.0.0.1:43211";
-            var res = await fetch(base + "/api/v1/manga/collection");
-            if (res.ok) {
-              var data = await res.json();
-              var lists2 = (data && data.lists) ? data.lists
-                : (data && data.mediaListCollection && data.mediaListCollection.lists) ? data.mediaListCollection.lists : [];
-              lists2.forEach(function(list) {
-                (Array.isArray(list.entries) ? list.entries : []).forEach(function(e) {
-                  var media = e.media || {};
-                  var titles = media.title || {};
-                  var cover = media.coverImage || {};
-                  entries.push({
-                    id: media.id || 0,
-                    title: titles.userPreferred || titles.english || titles.romaji || "Sem título",
-                    image: cover.large || cover.medium || "",
-                    chapters: media.chapters || null,
-                    progress: e.progress || 0,
-                    listStatus: list.name || list.status || ""
-                  });
-                });
-              });
-            }
-          } catch(e2) {
-            console.log("REST fallback falhou:", e2 && e2.message ? e2.message : String(e2));
-          }
+        if (entries.length > 0) {
+          libraryData.set(entries);
+          status.set("Biblioteca carregada — " + entries.length + " mangas");
+        } else {
+          libraryData.set([]);
+          status.set("Biblioteca vazia — abre a secção Manga no Seanime primeiro");
         }
-        // Tentativa 3: GraphQL AniList com Viewer
-        if (entries.length === 0) {
-          var vRes = await fetch("https://graphql.anilist.co", {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ query: "query{Viewer{id}}" })
-          });
-          var vData = await vRes.json();
-          var vId = vData && vData.data && vData.data.Viewer && vData.data.Viewer.id;
-          if (vId) {
-            var lRes = await fetch("https://graphql.anilist.co", {
-              method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                query: "query($id:Int){MediaListCollection(userId:$id,type:MANGA){lists{name entries{progress media{id chapters title{userPreferred romaji english}coverImage{large}}}}}}",
-                variables: { id: vId }
-              })
-            });
-            var lData = await lRes.json();
-            var lists3 = (lData && lData.data && lData.data.MediaListCollection && lData.data.MediaListCollection.lists) || [];
-            lists3.forEach(function(list) {
-              (list.entries || []).forEach(function(e) {
-                var media = e.media || {};
-                var titles = media.title || {};
-                var cover = media.coverImage || {};
-                entries.push({
-                  id: media.id || 0,
-                  title: titles.userPreferred || titles.english || titles.romaji || "Sem título",
-                  image: cover.large || "",
-                  chapters: media.chapters || null,
-                  progress: e.progress || 0,
-                  listStatus: list.name || ""
-                });
-              });
-            });
-          }
-        }
-        libraryData.set(entries);
-        status.set(entries.length
-          ? "Biblioteca carregada — " + entries.length + " mangas"
-          : "Biblioteca vazia (verifica autenticação AniList)");
       } catch(e) {
         libraryData.set([]);
         status.set("Erro: " + (e && e.message ? e.message : String(e)));
@@ -592,7 +542,7 @@ function init() {
 
     /* ── LIBRARY ── */
     function renderLibrary(){
-      if(!state.loading&&state.libraryData.length===0&&!state._libLoaded){state._libLoaded=true;window.webview.send("fetchAniList");}
+      if(!state.loading&&state.libraryData.length===0&&!window.__libLoaded){window.__libLoaded=true;window.webview.send("fetchAniList");}
       let html='<div style="padding:20px;">';
       html+='<div class="lib-header">';
       html+='<button id="loadLibBtn" class="btn btn-primary">↻ Recarregar</button>';
@@ -639,7 +589,7 @@ function init() {
       const backBtn=document.getElementById("backBtn");
       if(loadBtn){
         loadBtn.addEventListener("click",()=>{
-          state._libLoaded=false;
+          window.__libLoaded=false;
           window.webview.send("fetchAniList");
         });
       }
