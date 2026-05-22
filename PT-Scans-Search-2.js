@@ -137,17 +137,20 @@ function init() {
       status.set("A carregar biblioteca AniList...");
       loading.set(true);
       try {
-        const res = await fetch("http://localhost:43211/api/v1/manga/collection");
-        if (!res.ok) throw new Error("HTTP " + res.status + " — verifica se o Seanime está a correr");
-        const data = await res.json();
-        const lists = (data && Array.isArray(data.lists)) ? data.lists : [];
+        const collection = await ctx.manga.getCollection();
+        // collection.mediaListCollection.lists = array de listas (CURRENT, etc.)
+        const lists = (collection &&
+                       collection.mediaListCollection &&
+                       Array.isArray(collection.mediaListCollection.lists))
+                      ? collection.mediaListCollection.lists
+                      : [];
         const entries = [];
-        lists.forEach(list => {
-          const listName = list.name || "";
-          safeArray(list.entries).forEach(e => {
-            const media = e.media || {};
-            const titles = media.title || {};
-            const cover = media.coverImage || {};
+        lists.forEach(function(list) {
+          var listName = list.name || "";
+          safeArray(list.entries).forEach(function(e) {
+            var media = e.media || {};
+            var titles = media.title || {};
+            var cover = media.coverImage || {};
             entries.push({
               id: media.id || 0,
               title: titles.userPreferred || titles.english || titles.romaji || "Sem título",
@@ -162,7 +165,7 @@ function init() {
         status.set(entries.length ? "Biblioteca carregada — " + entries.length + " mangas" : "Biblioteca vazia");
       } catch (e) {
         libraryData.set([]);
-        status.set("Erro: " + (e && e.message ? e.message : "falha"));
+        status.set("Erro: " + (e && e.message ? e.message : String(e)));
       } finally {
         loading.set(false);
       }
@@ -521,7 +524,7 @@ function init() {
 
     /* ── LIBRARY ── */
     function renderLibrary(){
-      // auto-carregar ao entrar na biblioteca (uma vez)
+      // auto-carregar ao entrar na biblioteca
       if(!state.loading && state.libraryData.length===0 && !state._libLoaded){
         state._libLoaded=true;
         window.webview.send("fetchAniList", null);
@@ -601,8 +604,6 @@ function init() {
         attachLibraryEvents();
         return;
       }
-      // ao sair da biblioteca reset o flag para próxima visita
-      state._libLoaded=false;
 
       const all=safeArray(state.results);
       const filtered=state.sourceFilter==="all"?all:all.filter(i=>getItemSource(i)===state.sourceFilter);
