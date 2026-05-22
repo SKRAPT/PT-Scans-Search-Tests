@@ -11,7 +11,7 @@
   "lang": "pt",
   "payloadURI": "https://raw.githubusercontent.com/SKRAPT/PT-Scans-Search/main/PT%20Scans%20Search.js",
   "plugin": {
-    "version": "2",
+    "version": "1",
     "permissions": {
       "scopes": [],
       "allow": {
